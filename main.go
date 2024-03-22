@@ -32,12 +32,8 @@ func readDataFromStream(rw *bufio.ReadWriter) {
 			panic(err)
 		}
 		defer file.Close()
-
 		writer := bufio.NewWriter(file)
-
-		fmt.Println("About to copy from reader")
 		_, err = io.Copy(writer, rw.Reader)
-		fmt.Println("Copied data")
 		if err != nil {
 			panic(err)
 		}
@@ -53,16 +49,12 @@ func writeDataToStream(rw *bufio.ReadWriter) {
 		if err != nil {
 			panic(err)
 		}
-		fmt.Println("About to write data into stream")
 		_, err = rw.Write(data)
-		fmt.Println("Completed writing to stream")
 		if err != nil {
 			fmt.Println("Error writing to buffer")
 			panic(err)
 		}
-		fmt.Println("ABout to flush data")
 		err = rw.Flush()
-		fmt.Println("Flushed data")
 		if err != nil {
 			fmt.Println("Error flushing buffer")
 			panic(err)
