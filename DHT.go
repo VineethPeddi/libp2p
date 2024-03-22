@@ -80,8 +80,8 @@ func (d *DHT) initDiscovery(host host.Host, config *Config) {
 		} else {
 			rw := bufio.NewReadWriter(bufio.NewReader(stream), bufio.NewWriter(stream))
 
-			go writeData(rw)
-			go readData(rw)
+			go writeDataToStream(rw)
+			go readDataFromStream(rw)
 		}
 
 		fmt.Println("Connected to:", peer)

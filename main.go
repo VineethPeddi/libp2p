@@ -6,63 +6,63 @@ import (
 	"fmt"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/multiformats/go-multiaddr"
+	"io"
 	"os"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
-	"github.com/libp2p/go-libp2p/core/protocol"
 )
 
 func handleStream(stream network.Stream) {
 	fmt.Println("Got a new stream!")
 
-	// Create a buffer stream for non-blocking read and write.
+	// Creating a buffer stream for non-blocking read and write.
 	rw := bufio.NewReadWriter(bufio.NewReader(stream), bufio.NewWriter(stream))
 
-	go readData(rw)
-	go writeData(rw)
-
-	// 'stream' will stay open until you close it (or the other side closes it).
+	go readDataFromStream(rw)
+	go writeDataToStream(rw)
 }
 
-func readData(rw *bufio.ReadWriter) {
+func readDataFromStream(rw *bufio.ReadWriter) {
 	for {
-		str, err := rw.ReadString('\n')
+		file, err := os.OpenFile("example.txt", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 		if err != nil {
-			fmt.Println("Error reading from buffer")
 			panic(err)
 		}
+		defer file.Close()
 
-		if str == "" {
-			return
-		}
-		if str != "\n" {
-			// Green console colour: 	\x1b[32m
-			// Reset console colour: 	\x1b[0m
-			fmt.Printf("\x1b[32m%s\x1b[0m> ", str)
-		}
+		writer := bufio.NewWriter(file)
 
+		fmt.Println("About to copy from reader")
+		_, err = io.Copy(writer, rw.Reader)
+		fmt.Println("Copied data")
+		if err != nil {
+			panic(err)
+		}
 	}
 }
 
-func writeData(rw *bufio.ReadWriter) {
-	stdReader := bufio.NewReader(os.Stdin)
-
+func writeDataToStream(rw *bufio.ReadWriter) {
 	for {
-		fmt.Print(">  ")
-		sendData, err := stdReader.ReadString('\n')
+		fmt.Print(">Please provide fileName to upload:  ")
+		var fileName string
+		_, err := fmt.Scan(&fileName)
+		data, err := os.ReadFile(fileName)
 		if err != nil {
-			fmt.Println("Error reading from stdin")
 			panic(err)
 		}
-
-		_, err = rw.WriteString(fmt.Sprintf("%s\n", sendData))
+		fmt.Println("About to write data into stream")
+		_, err = rw.Write(data)
+		fmt.Println("Completed writing to stream")
 		if err != nil {
 			fmt.Println("Error writing to buffer")
 			panic(err)
 		}
+		fmt.Println("ABout to flush data")
 		err = rw.Flush()
+		fmt.Println("Flushed data")
 		if err != nil {
 			fmt.Println("Error flushing buffer")
 			panic(err)
@@ -78,7 +78,6 @@ func getDiscoveryType(dtype string) Discovery {
 }
 
 func createNode(config *Config) host.Host {
-
 	fmt.Printf("[*] Listening on: %s with port: %d\n", config.listenHost, config.listenPort)
 
 	r := rand.Reader
@@ -89,11 +88,7 @@ func createNode(config *Config) host.Host {
 		panic(err)
 	}
 
-	// 0.0.0.0 will listen on any interface device.
 	sourceMultiAddr, _ := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/tcp/%d", config.listenHost, config.listenPort))
-	fmt.Println("source: ", sourceMultiAddr, "\n\n ")
-	// libp2p.New constructs a new libp2p Host.
-	// Other options can be added here.
 
 	host, err := libp2p.New(
 		libp2p.ListenAddrs(sourceMultiAddr),
@@ -109,7 +104,6 @@ func createNode(config *Config) host.Host {
 }
 
 func main() {
-
 	config := parseFlags()
 	host := createNode(config)
 
