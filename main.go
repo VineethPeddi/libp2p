@@ -2,68 +2,67 @@ package main
 
 import (
 	"bufio"
-	"context"
 	"crypto/rand"
-	"flag"
 	"fmt"
 	"github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/multiformats/go-multiaddr"
+	"io"
 	"os"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
-	"github.com/libp2p/go-libp2p/core/protocol"
 )
 
 func handleStream(stream network.Stream) {
 	fmt.Println("Got a new stream!")
 
-	// Create a buffer stream for non-blocking read and write.
+	// Creating a buffer stream for non-blocking read and write.
 	rw := bufio.NewReadWriter(bufio.NewReader(stream), bufio.NewWriter(stream))
 
-	go readData(rw)
-	go writeData(rw)
-
-	// 'stream' will stay open until you close it (or the other side closes it).
+	go readDataFromStream(rw)
+	go writeDataToStream(rw)
 }
 
-func readData(rw *bufio.ReadWriter) {
+func readDataFromStream(rw *bufio.ReadWriter) {
 	for {
-		str, err := rw.ReadString('\n')
+		file, err := os.OpenFile("example.txt", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 		if err != nil {
-			fmt.Println("Error reading from buffer")
 			panic(err)
 		}
+		defer file.Close()
 
-		if str == "" {
-			return
-		}
-		if str != "\n" {
-			// Green console colour: 	\x1b[32m
-			// Reset console colour: 	\x1b[0m
-			fmt.Printf("\x1b[32m%s\x1b[0m> ", str)
-		}
+		writer := bufio.NewWriter(file)
 
+		fmt.Println("About to copy from reader")
+		_, err = io.Copy(writer, rw.Reader)
+		fmt.Println("Copied data")
+		if err != nil {
+			panic(err)
+		}
 	}
 }
 
-func writeData(rw *bufio.ReadWriter) {
-	stdReader := bufio.NewReader(os.Stdin)
-
+func writeDataToStream(rw *bufio.ReadWriter) {
 	for {
-		fmt.Print("> ")
-		sendData, err := stdReader.ReadString('\n')
+		fmt.Print(">Please provide fileName to upload:  ")
+		var fileName string
+		_, err := fmt.Scan(&fileName)
+		data, err := os.ReadFile(fileName)
 		if err != nil {
-			fmt.Println("Error reading from stdin")
 			panic(err)
 		}
-
-		_, err = rw.WriteString(fmt.Sprintf("%s\n", sendData))
+		fmt.Println("About to write data into stream")
+		_, err = rw.Write(data)
+		fmt.Println("Completed writing to stream")
 		if err != nil {
 			fmt.Println("Error writing to buffer")
 			panic(err)
 		}
+		fmt.Println("ABout to flush data")
 		err = rw.Flush()
+		fmt.Println("Flushed data")
 		if err != nil {
 			fmt.Println("Error flushing buffer")
 			panic(err)
@@ -71,20 +70,16 @@ func writeData(rw *bufio.ReadWriter) {
 	}
 }
 
-func main() {
-	help := flag.Bool("help", false, "Display Help")
-	cfg := parseFlags()
-
-	if *help {
-		fmt.Printf("Simple example for peer discovery using mDNS. mDNS is great when you have multiple peers in local LAN.")
-		fmt.Printf("Usage: \n   Run './chat-with-mdns'\nor Run './chat-with-mdns -host [host] -port [port] -rendezvous [string] -pid [proto ID]'\n")
-
-		os.Exit(0)
+func getDiscoveryType(dtype string) Discovery {
+	if dtype == "mdns" {
+		return &Mdns{}
 	}
+	return &DHT{}
+}
 
-	fmt.Printf("[*] Listening on: %s with port: %d\n", cfg.listenHost, cfg.listenPort)
+func createNode(config *Config) host.Host {
+	fmt.Printf("[*] Listening on: %s with port: %d\n", config.listenHost, config.listenPort)
 
-	ctx := context.Background()
 	r := rand.Reader
 
 	// Creates a new RSA key pair for this host.
@@ -93,11 +88,7 @@ func main() {
 		panic(err)
 	}
 
-	// 0.0.0.0 will listen on any interface device.
-	sourceMultiAddr, _ := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/tcp/%d", cfg.listenHost, cfg.listenPort))
-	fmt.Println("source: ", sourceMultiAddr, "\n\n ")
-	// libp2p.New constructs a new libp2p Host.
-	// Other options can be added here.
+	sourceMultiAddr, _ := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/tcp/%d", config.listenHost, config.listenPort))
 
 	host, err := libp2p.New(
 		libp2p.ListenAddrs(sourceMultiAddr),
@@ -109,39 +100,19 @@ func main() {
 
 	fmt.Println("host ID: ", host.ID())
 	fmt.Println("host address: ", host.Addrs())
+	return host
+}
+
+func main() {
+	config := parseFlags()
+	host := createNode(config)
 
 	// Set a function as stream handler.
 	// This function is called when a peer initiates a connection and starts a stream with this peer.
-	host.SetStreamHandler(protocol.ID(cfg.ProtocolID), handleStream)
+	host.SetStreamHandler(protocol.ID(config.ProtocolID), handleStream)
 
-	fmt.Printf("\n[*] Your Multiaddress Is: /ip4/%s/tcp/%v/p2p/%s\n", cfg.listenHost, cfg.listenPort, host.ID())
+	discovery := getDiscoveryType(config.dType)
+	discovery.initDiscovery(host, config)
 
-	peerChan := initMDNS(host, cfg.RendezvousString)
-	for peer := range peerChan { // allows multiple peers to join
-		fmt.Printf("Received a peer %+v: \n\n", peer)
-		if peer.ID > host.ID() {
-			// if other end peer id greater than us, don't connect to it, just wait for it to connect us
-			fmt.Println("Found peer:", peer, " id is greater than us, wait for it to connect to us")
-			continue
-		}
-		fmt.Println("Found peer:", peer, ", connecting")
-
-		if err := host.Connect(ctx, peer); err != nil {
-			fmt.Println("Connection failed:", err)
-			continue
-		}
-
-		// open a stream, this stream will be handled by handleStream other end
-		stream, err := host.NewStream(ctx, peer.ID, protocol.ID(cfg.ProtocolID))
-
-		if err != nil {
-			fmt.Println("Stream open failed", err)
-		} else {
-			rw := bufio.NewReadWriter(bufio.NewReader(stream), bufio.NewWriter(stream))
-
-			go writeData(rw)
-			go readData(rw)
-			fmt.Println("Connected to:", peer)
-		}
-	}
+	select {}
 }
