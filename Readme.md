@@ -1,4 +1,4 @@
-This is a peer to peer file sharing app using streams.
+This is a peer to peer file sharing app using streams built using web3 and libp2p.
 
 Build the project using the following command
 
