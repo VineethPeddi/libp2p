@@ -27,3 +27,11 @@ We can upload any text file from a peer and other peer can download the file. Ho
 
 The file will be downloaded by the name `output.txt`.
 
+We can pass different flags like the following:
+1. -port => This is used when we want to run the application on a specific port
+2. -rendezvous => This is used to provide the string through which we can find the peers
+3. -host => This is the listen address 
+4. -pid => This is the protocol id at which a peer can connect with others
+5. -dType => This is used to specify which discovery mechanism we would like to implement
+6. -peer => This is the bootstrap nodes address
+
