@@ -69,7 +69,7 @@ func getDiscoveryType(dtype string) Discovery {
 	return &DHT{}
 }
 
-func createNode(config *Config) host.Host {
+func createNode(config *Config) (host.Host, error) {
 	fmt.Printf("[*] Listening on: %s with port: %d\n", config.listenHost, config.listenPort)
 
 	r := rand.Reader
@@ -77,7 +77,7 @@ func createNode(config *Config) host.Host {
 	// Creates a new RSA key pair for this host.
 	prvKey, _, err := crypto.GenerateKeyPairWithReader(crypto.RSA, 2048, r)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	sourceMultiAddr, _ := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/tcp/%d", config.listenHost, config.listenPort))
@@ -87,24 +87,29 @@ func createNode(config *Config) host.Host {
 		libp2p.Identity(prvKey),
 	)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	fmt.Println("host ID: ", host.ID())
 	fmt.Println("host address: ", host.Addrs())
-	return host
+	return host, nil
 }
 
 func main() {
 	config := parseFlags()
-	host := createNode(config)
-
+	host, err := createNode(config)
+	if err != nil {
+		fmt.Println("Error in creating the node")
+		panic(err)
+	}
 	// Set a function as stream handler.
 	// This function is called when a peer initiates a connection and starts a stream with this peer.
 	host.SetStreamHandler(protocol.ID(config.ProtocolID), handleStream)
 
 	discovery := getDiscoveryType(config.dType)
-	discovery.initDiscovery(host, config)
+	if err := discovery.initDiscovery(host, config); err != nil {
+		panic(err)
+	}
 
 	select {}
 }
