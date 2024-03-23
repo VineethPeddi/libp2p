@@ -17,18 +17,18 @@ import (
 type DHT struct {
 }
 
-func (d *DHT) initDiscovery(host host.Host, config *Config) {
+func (d *DHT) initDiscovery(host host.Host, config *Config) error {
 	ctx := context.Background()
 	kademliaDHT, err := dht.New(ctx, host)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	// Bootstrap the DHT. In the default configuration, this spawns a Background
 	// thread that will refresh the peer table every five minutes.
 	fmt.Println("Bootstrapping the DHT")
 	if err = kademliaDHT.Bootstrap(ctx); err != nil {
-		panic(err)
+		return err
 	}
 
 	// Let's connect to the bootstrap nodes first. They will tell us about the
@@ -60,7 +60,7 @@ func (d *DHT) initDiscovery(host host.Host, config *Config) {
 	fmt.Println("Searching for other peers...")
 	peerChan, err := routingDiscovery.FindPeers(ctx, config.RendezvousString)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	for peer := range peerChan {
@@ -86,4 +86,5 @@ func (d *DHT) initDiscovery(host host.Host, config *Config) {
 
 		fmt.Println("Connected to:", peer)
 	}
+	return nil
 }

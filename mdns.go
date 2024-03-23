@@ -20,24 +20,25 @@ func (n *discoveryNotifee) HandlePeerFound(pi peer.AddrInfo) {
 }
 
 // Initialize the MDNS service
-func (m *Mdns) initMDNS(peerhost host.Host, rendezvous string) chan peer.AddrInfo {
-	// register with service so that we get notified about peer discovery
+func (m *Mdns) initMDNS(peerhost host.Host, rendezvous string) (chan peer.AddrInfo, error) {
 	n := &discoveryNotifee{}
 	n.PeerChan = make(chan peer.AddrInfo)
 
-	// An hour might be a long long period in practical applications. But this is fine for us
 	ser := mdns.NewMdnsService(peerhost, rendezvous, n)
 	if err := ser.Start(); err != nil {
-		panic(err)
+		return nil, err
 	}
-	return n.PeerChan
+	return n.PeerChan, nil
 }
 
 type Mdns struct{}
 
-func (m *Mdns) initDiscovery(host host.Host, config *Config) {
+func (m *Mdns) initDiscovery(host host.Host, config *Config) error {
 	ctx := context.Background()
-	peerChan := m.initMDNS(host, config.RendezvousString)
+	peerChan, err := m.initMDNS(host, config.RendezvousString)
+	if err != nil {
+		return err
+	}
 	for peer := range peerChan { // allows multiple peers to join
 		fmt.Printf("Received a peer %+v: \n\n", peer)
 		if peer.ID > host.ID() {
@@ -65,4 +66,5 @@ func (m *Mdns) initDiscovery(host host.Host, config *Config) {
 			fmt.Println("Connected to:", peer)
 		}
 	}
+	return nil
 }
